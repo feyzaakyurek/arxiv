@@ -6,6 +6,8 @@ from itertools import combinations
 from pyspark.sql import Row
 from pyspark.sql import SparkSession
 from pyspark.sql.types import *
+import sys
+
 
 
 def query_arxiv(search_query, start, max_results = -1):
@@ -54,58 +56,56 @@ def create_df(l, schema):
 def query(search_query = "all", start = 0, max_results = 2000, verbose = False):
     ### Querying Arxiv API
 
-    # Query parameters
-    # search_query = 'au:%22daphne+koller%22'
-    # search_query = 'cat:stat.ML'
-    # start = 0
-    # max_results = 2000
-
-    # Querying the Arxiv API
     feed = query_arxiv(search_query, start, max_results)
+    print("Search q %s, start: %i, max_results: %i" % (search_query, start, max_results))
+    count = len(feed.entries)
     if verbose:
         print('Feed last updated: %s' % feed.feed.updated)
         print('Total results for this query: %s' % feed.feed.opensearch_totalresults)
-        print('Max results for this query: %s' % len(feed.entries))
+        print('Max results for this query: %s' % count)
 
 
     # Create a data frame for unique authors <AuthorID, AuthorName>
     author_list = read_authors(feed)
-    schema = StructType([
+    collab_list = read_collabs(feed, author_list)
+
+    return (author_list, collab_list, count, feed.feed.opensearch_totalresults)
+
+
+def query_all(search_query = "all", request = -1, batch = 1000):
+    al, cl, t, feedtotal = query(search_query, start = 0, max_results = batch, verbose = True)
+    totalresults = t
+    print("Query returned: ", t)
+    print("Total Results: ", totalresults)
+    req = feedtotal if request == -1 else request
+
+    while t == batch and totalresults < req:
+        a, c, t, _ = query(search_query, start = totalresults, max_results = batch, verbose = False)
+        al = al + a
+        cl = cl + c
+        totalresults = totalresults + t
+        print("Query returned: ", t)
+        print("Total results:%i" % totalresults)
+
+    schema_a = StructType([
             StructField("id", IntegerType(), True),
             StructField("name", StringType(), True)
         ])
-    author_df = create_df(author_list, schema)
-    author_df.filter(author_df.id  < 10).collect()
-    # author_df.collect()
+    author_df = create_df(al, schema_a)
 
-    # author_df.filter(author_df.name == "Larry Wasserman").collect()
-    # Create a data frame for collaborations <Author1ID, Author2ID, PaperArxivID, PaperTitle>
-    collab_list = read_collabs(feed, author_list)
-    schema = StructType([
+    schema_c = StructType([
             StructField("src", IntegerType(), True),
             StructField("dest", IntegerType(), True),
             StructField("arxiv", StringType(), True),
             StructField("title", StringType(), True)
         ])
-    collab_df = create_df(collab_list, schema)
-    # collab_df.collect()
-    return (author_df, collab_df, feed.feed.opensearch_totalresults)
-    ### Save Author  and Collab Dataframes to Disk
+    collab_df = create_df(cl, schema_c)
 
-def query_all(max_results = 20000, batch = 100):
-    search_query = "all"
-    author_df, collab_df, t = query(search_query)
-    totalresults = t
-
-    while t == batch and totalresults < max_results:
-        a, c, t = query(search_query, start = totalresults, max_results = batch, verbose = True)
-        author_df = author_df.union(a)
-        collab_df = collab_df.union(c)
-        totalresults = totalresults + t
-        print("Total results:%i" % totalresults)
-
-    author_df.write.mode('overwrite').parquet("Data/authors-%s.parquet" % search_query)
-    collab_df.write.mode('overwrite').parquet("Data/collab-%s.parquet" % search_query)
+    print("Query completed, length of unique authors: ", author_df.count() )
+    print("Length of collabs: ", collab_df.count() )
+    author_df.write.mode('overwrite').parquet("Data/authors-%s-total%i.parquet" % (search_query.replace(":",""), totalresults))
+    collab_df.write.mode('overwrite').parquet("Data/collab-%s-total%i.parquet" % (search_query.replace(":",""), totalresults))
+    print("Parquet written.")
 
 spark = SparkSession.builder \
         .master("local") \
@@ -114,5 +114,14 @@ spark = SparkSession.builder \
         .getOrCreate()
 
 sc = spark.sparkContext
-query_all(max_results = 400, batch = 100)
+if len(sys.argv) == 1:
+    query_all(request = 2000)
+elif len(sys.argv) == 2:
+    query_all(search_query = sys.argv[1])
+elif len(sys.argv) == 3:
+    query_all(search_query = sys.argv[1], request = int(sys.argv[2]))
+else:
+    print("Arguments invalid: ", sys.argv)
+
 spark.stop()
+# python query.py "cat:stat.ML+OR+cat:stat.AP+OR+cat:stat.CO+OR+cat:stat.ME+OR+cat:stat.OT+OR+cat:stat.TH" 200

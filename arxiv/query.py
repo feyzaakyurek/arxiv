@@ -142,26 +142,26 @@ class Query:
         print("Parquet written.")
 
 
-# if __name__ == '__main__':
+if __name__ == '__main__':
 
-q = Query()
+    q = Query()
 
-spark = SparkSession.builder \
-        .master("local") \
-        .appName("Word Count") \
-        .config("spark.some.config.option", "some-value") \
-        .getOrCreate()
+    spark = SparkSession.builder \
+            .master("local") \
+            .appName("Word Count") \
+            .config("spark.some.config.option", "some-value") \
+            .getOrCreate()
 
-sc = spark.sparkContext
-if len(sys.argv) == 1:
-    q.query_all(request = 2000)
-elif len(sys.argv) == 2:
-    q.query_all(search_query = sys.argv[1])
-elif len(sys.argv) == 3:
-    # print(sys.argv[1])
-    q.query_all(search_query = sys.argv[1], request = int(sys.argv[2]))
-else:
-    print("Arguments invalid: ", sys.argv)
+    sc = spark.sparkContext
+    if len(sys.argv) == 1:
+        q.query_all(request = 2000)
+    elif len(sys.argv) == 2:
+        q.query_all(search_query = sys.argv[1])
+    elif len(sys.argv) == 3:
+        # print(sys.argv[1])
+        q.query_all(search_query = sys.argv[1], request = int(sys.argv[2]))
+    else:
+        print("Arguments invalid: ", sys.argv)
 
-spark.stop()
+    spark.stop()
 # python query.py "cat:stat.ML+OR+cat:stat.AP+OR+cat:stat.CO+OR+cat:stat.ME+OR+cat:stat.OT+OR+cat:stat.TH" 200

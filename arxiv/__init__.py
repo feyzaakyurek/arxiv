@@ -12,7 +12,7 @@ spark = SparkSession.builder \
 
 sc = spark.sparkContext
 
-path = "catstat.ML+OR+catstat.AP+OR+catstat.CO+OR+catstat.ME+OR+catstat.OT+OR+catstat.TH-total1800"
+path = "catstat.ML+OR+catstat.AP+OR+catstat.CO+OR+catstat.ME+OR+catstat.OT+OR+catstat.TH-total49904"
 
 pa = "Data/authors-" + path + ".parquet"
 pc = "Data/collab-" + path + ".parquet"
@@ -53,7 +53,7 @@ def dist(a1, a2, depth_max = 3):
         df_dest = collab_df.filter(collab_df.src == a).select(collab_df.columns[1])
         for i in [int(row.dest) for row in df_dest.collect()]:
             # print("Next author: %i" % i)
-            if i not in parents: #if already visited, don't add the queue
+            if i not in parents: #if already visited, don't add to queue
                 fifo.put(i); depth.put(d + 1)
                 parents[i] = a
 
@@ -71,7 +71,29 @@ def dist(a1, a2, depth_max = 3):
     while parents[a] > 0:
         # dist = dist + 1
         a = parents[a]
-        ancestry.append(a)
+        ancestry = [a] + ancestry
 
+    for i in range(len(ancestry)-1):
+        id1 = ancestry[i]
+        id2 = ancestry[i+1]
+        df1 = collab_df.filter((collab_df.src == id1) | (collab_df.dest == id1))
+        df2 = df1.filter((collab_df.src == id2) | (collab_df.dest == id2))
+        # df2.show()
+        df3 = df2.join(author_df, df2.src == author_df.id, 'left')\
+        .withColumnRenamed('name','Author_1')\
+        .select('src','Author_1','dest', 'arxiv', 'title')
+        # df3.show()
+        df4 = df3.join(author_df, df3.dest == author_df.id, 'left')\
+        .withColumnRenamed('name', "Author_2")\
+        .withColumnRenamed('title', "Paper Title")\
+        .withColumnRenamed('arxiv', "Arxiv ID")\
+        .select("Author_1", "Author_2", "Paper Title","Arxiv ID")
+
+
+        df4.show()
+        # r = author_df.where(author_df.id == i).select("name")
+        # author1 = df3.rdd.map(lambda x: x.id).first()
+        # df3.first().collect()
     # TODO: return names instead of ids
-    return (d, ancestry)
+    # return (d, ancestry)
+    print("Distance: ", d)
